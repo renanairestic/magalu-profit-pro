@@ -67,7 +67,7 @@ export default function Dashboard() {
                 <Calculator className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">Magalu Price Calculator</h1>
+                <h1 className="text-xl font-bold">Magalu - Calculadora de Precificação</h1>
                 <p className="text-sm text-muted-foreground">
                   Bem-vindo, {profile?.full_name || user?.email}
                 </p>
