@@ -21,12 +21,14 @@ export type Database = {
           created_at: string | null
           dispatch_level: string
           estimated_receipt: number | null
+          financial_modality: string | null
           fixed_fee: number | null
           height_cm: number | null
           id: string
           is_heavy: boolean | null
           length_cm: number | null
           operational_cost: number | null
+          product_category: string | null
           product_cost: number | null
           product_name: string | null
           product_price: number
@@ -43,12 +45,14 @@ export type Database = {
           created_at?: string | null
           dispatch_level: string
           estimated_receipt?: number | null
+          financial_modality?: string | null
           fixed_fee?: number | null
           height_cm?: number | null
           id?: string
           is_heavy?: boolean | null
           length_cm?: number | null
           operational_cost?: number | null
+          product_category?: string | null
           product_cost?: number | null
           product_name?: string | null
           product_price: number
@@ -65,12 +69,14 @@ export type Database = {
           created_at?: string | null
           dispatch_level?: string
           estimated_receipt?: number | null
+          financial_modality?: string | null
           fixed_fee?: number | null
           height_cm?: number | null
           id?: string
           is_heavy?: boolean | null
           length_cm?: number | null
           operational_cost?: number | null
+          product_category?: string | null
           product_cost?: number | null
           product_name?: string | null
           product_price?: number
