@@ -8,8 +8,11 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Calculator, Save, AlertCircle } from 'lucide-react';
+import { Calculator, Save, AlertCircle, BookOpen, Trash2, HelpCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Link } from 'react-router-dom';
+import { formatCurrency, formatDecimal, formatPercentage, parseNumber } from '@/lib/formatters';
 
 interface CalculationResult {
   calculatedWeight: number;
@@ -18,21 +21,41 @@ interface CalculationResult {
   commissionRate: number;
   commission: number;
   shippingCoparticipation: number;
+  shippingCoparticipationCalculated: boolean;
   shippingWeightRange: string;
   tax: number;
   totalDeductions: number;
   estimatedReceipt: number;
+  contributionMargin: number;
+  contributionMarginPercentage: number;
   profitMargin: number;
   profitPercentage: number;
+}
+
+interface GlobalSettings {
+  fixed_fee: number;
+  commission_moda_antecipado: number;
+  commission_moda_parcelado: number;
+  commission_demais_antecipado: number;
+  commission_demais_parcelado: number;
+}
+
+interface CommissionOption {
+  value: string;
+  label: string;
+  rate: number;
+  category: string;
+  modality: string;
 }
 
 export function PricingCalculator() {
   const { user } = useAuth();
   const { toast } = useToast();
+  
+  // Form states
   const [productName, setProductName] = useState('');
   const [price, setPrice] = useState('');
-  const [category, setCategory] = useState('');
-  const [financialModality, setFinancialModality] = useState('');
+  const [commissionType, setCommissionType] = useState('');
   const [dispatchLevel, setDispatchLevel] = useState('');
   const [taxPercentage, setTaxPercentage] = useState('');
   const [productCost, setProductCost] = useState('');
@@ -43,33 +66,112 @@ export function PricingCalculator() {
   const [weight, setWeight] = useState('');
   const [dimensionUnit, setDimensionUnit] = useState('cm');
   const [weightUnit, setWeightUnit] = useState('kg');
+  
+  // Settings and options
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
+  const [customCommissionEnabled, setCustomCommissionEnabled] = useState(false);
+  const [customCommissionRate, setCustomCommissionRate] = useState<number | null>(null);
+  const [commissionOptions, setCommissionOptions] = useState<CommissionOption[]>([]);
+  
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDimensionSuggestion, setShowDimensionSuggestion] = useState(false);
 
-  // Load saved dispatch level from localStorage
+  // Load settings on mount
   useEffect(() => {
+    loadSettings();
     const savedLevel = localStorage.getItem('dispatchLevel');
     if (savedLevel) {
       setDispatchLevel(savedLevel);
     }
-  }, []);
-
-  // Save dispatch level to localStorage when changed
-  const handleDispatchLevelChange = (value: string) => {
-    setDispatchLevel(value);
-    localStorage.setItem('dispatchLevel', value);
-  };
+  }, [user]);
 
   // Show dimension suggestion when price > R$ 79
   useEffect(() => {
-    const priceValue = parseFloat(price);
+    const priceValue = parseNumber(price);
     if (priceValue > 79 && (!height || !width || !length || !weight)) {
       setShowDimensionSuggestion(true);
     } else {
       setShowDimensionSuggestion(false);
     }
   }, [price, height, width, length, weight]);
+
+  const loadSettings = async () => {
+    try {
+      // Load global settings
+      const { data: settings } = await supabase
+        .from('global_settings')
+        .select('*')
+        .single();
+
+      if (settings) {
+        setGlobalSettings(settings);
+        buildCommissionOptions(settings, null);
+      }
+
+      // Load user custom settings
+      if (user) {
+        const { data: customSettings } = await supabase
+          .from('user_custom_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (customSettings && customSettings.custom_commission_enabled) {
+          setCustomCommissionEnabled(true);
+          setCustomCommissionRate(customSettings.custom_commission_rate);
+          buildCommissionOptions(settings, customSettings.custom_commission_rate);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  };
+
+  const buildCommissionOptions = (settings: GlobalSettings, customRate: number | null) => {
+    const options: CommissionOption[] = [
+      {
+        value: 'moda_antecipado',
+        label: `Moda e Acessórios - Antecipado (${formatPercentage(settings.commission_moda_antecipado)})`,
+        rate: settings.commission_moda_antecipado,
+        category: 'Moda',
+        modality: 'Antecipado',
+      },
+      {
+        value: 'demais_antecipado',
+        label: `Demais Categorias - Antecipado (${formatPercentage(settings.commission_demais_antecipado)})`,
+        rate: settings.commission_demais_antecipado,
+        category: 'Demais',
+        modality: 'Antecipado',
+      },
+      {
+        value: 'moda_parcelado',
+        label: `Moda e Acessórios - Fluxo Parcelado (${formatPercentage(settings.commission_moda_parcelado)})`,
+        rate: settings.commission_moda_parcelado,
+        category: 'Moda',
+        modality: 'Parcelado',
+      },
+      {
+        value: 'demais_parcelado',
+        label: `Demais Categorias - Fluxo Parcelado (${formatPercentage(settings.commission_demais_parcelado)})`,
+        rate: settings.commission_demais_parcelado,
+        category: 'Demais',
+        modality: 'Parcelado',
+      },
+    ];
+
+    if (customRate !== null) {
+      options.push({
+        value: 'custom',
+        label: `Personalizada (${formatPercentage(customRate)})`,
+        rate: customRate,
+        category: 'Personalizada',
+        modality: 'Personalizada',
+      });
+    }
+
+    setCommissionOptions(options);
+  };
 
   const dispatchLevels = [
     { value: 'above_97', label: 'Acima de 97%', discount: 50 },
@@ -78,10 +180,15 @@ export function PricingCalculator() {
     { value: 'fulfilment', label: 'Fulfilment', discount: 75 },
   ];
 
-  // Shipping coparticipation table based on weight
+  const handleDispatchLevelChange = (value: string) => {
+    setDispatchLevel(value);
+    localStorage.setItem('dispatchLevel', value);
+  };
+
+  // Shipping coparticipation table
   const getShippingCoparticipation = (weightKg: number): { value: number; range: string } => {
-    if (weightKg <= 0.5) return { value: 35.90, range: 'Até 0.5 kg' };
-    if (weightKg <= 1) return { value: 40.90, range: '0.5 kg a 1 kg' };
+    if (weightKg <= 0.5) return { value: 35.90, range: 'Até 0,5 kg' };
+    if (weightKg <= 1) return { value: 40.90, range: '0,5 kg a 1 kg' };
     if (weightKg <= 2) return { value: 42.90, range: '1 kg a 2 kg' };
     if (weightKg <= 5) return { value: 50.90, range: '2 kg a 5 kg' };
     if (weightKg <= 9) return { value: 77.90, range: '5 kg a 9 kg' };
@@ -109,17 +216,9 @@ export function PricingCalculator() {
     return { value: 375.90, range: 'Acima de 200 kg' };
   };
 
-  // Get commission rate based on category and financial modality
-  const getCommissionRate = (cat: string, modality: string): number => {
-    if (cat === 'moda') {
-      return modality === 'parcelado' ? 18 : 20;
-    } else {
-      return modality === 'parcelado' ? 14.8 : 18;
-    }
-  };
-
   const calculatePricing = () => {
-    const priceValue = parseFloat(price);
+    const priceValue = parseNumber(price);
+    
     if (!priceValue || priceValue <= 0) {
       toast({
         variant: "destructive",
@@ -129,80 +228,114 @@ export function PricingCalculator() {
       return;
     }
 
-    if (!category) {
+    if (!commissionType) {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Categoria do produto é obrigatória",
+        description: "Tipo de comissão é obrigatório",
       });
       return;
     }
 
-    if (!financialModality) {
+    if (!dispatchLevel) {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Modalidade financeira é obrigatória",
+        description: "Nível de despacho é obrigatório",
       });
       return;
     }
 
-    // Convert dimensions to cm
-    const heightCm = dimensionUnit === 'm' ? parseFloat(height) * 100 : parseFloat(height) || 0;
-    const widthCm = dimensionUnit === 'm' ? parseFloat(width) * 100 : parseFloat(width) || 0;
-    const lengthCm = dimensionUnit === 'm' ? parseFloat(length) * 100 : parseFloat(length) || 0;
-    
-    // Convert weight to kg
-    const weightKg = weightUnit === 'g' ? parseFloat(weight) / 1000 : parseFloat(weight) || 0;
+    if (!globalSettings) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Configurações não carregadas",
+      });
+      return;
+    }
 
-    // Calculate cubagem (Volume/6000)
-    const volume = heightCm * widthCm * lengthCm;
-    const cubicWeight = volume / 6000;
-    
-    // Calculated weight is the maximum between cubic weight and actual weight
-    const calculatedWeight = Math.max(cubicWeight, weightKg);
-    
-    // Product classification (LEVE vs PESADO)
-    // LEVE: All dimensions <= 100cm AND sum of dimensions <= 200cm AND weight < 30kg
-    const sumDimensions = heightCm + widthCm + lengthCm;
-    const maxDimension = Math.max(heightCm, widthCm, lengthCm);
-    const isHeavy = maxDimension > 100 || sumDimensions > 200 || calculatedWeight >= 30;
+    // Get commission rate
+    const selectedCommission = commissionOptions.find(opt => opt.value === commissionType);
+    if (!selectedCommission) return;
 
-    // Fixed fee: R$ 5.00 if price > R$ 10.00, otherwise R$ 0.00
-    const fixedFee = priceValue > 10 ? 5.00 : 0;
-
-    // Commission rate based on category and financial modality
-    const commissionRate = getCommissionRate(category, financialModality);
+    const commissionRate = selectedCommission.rate;
     const commission = (priceValue * commissionRate) / 100;
-    
-    // Shipping coparticipation
+
+    // Fixed fee
+    const fixedFee = priceValue > 10 ? globalSettings.fixed_fee : 0;
+
+    // Calculate shipping coparticipation
     let shippingCoparticipation = 0;
     let shippingWeightRange = 'N/A';
-    
-    // Only charge coparticipation if price > R$ 79.00
-    if (priceValue > 79) {
+    let calculatedWeight = 0;
+    let isHeavy = false;
+    let shippingCalculated = false;
+
+    // Convert dimensions and weight
+    const heightCm = dimensionUnit === 'm' ? parseNumber(height) * 100 : parseNumber(height);
+    const widthCm = dimensionUnit === 'm' ? parseNumber(width) * 100 : parseNumber(width);
+    const lengthCm = dimensionUnit === 'm' ? parseNumber(length) * 100 : parseNumber(length);
+    const weightKg = weightUnit === 'g' ? parseNumber(weight) / 1000 : parseNumber(weight);
+
+    // Check if we can calculate coparticipation
+    const canCalculateShipping = priceValue > 79 && 
+                                  weightKg > 0 && 
+                                  heightCm > 0 && 
+                                  widthCm > 0 && 
+                                  lengthCm > 0;
+
+    if (canCalculateShipping) {
+      // Calculate cubic weight
+      const volume = heightCm * widthCm * lengthCm;
+      const cubicWeight = volume / 6000;
+      calculatedWeight = Math.max(cubicWeight, weightKg);
+
+      // Product classification
+      const sumDimensions = heightCm + widthCm + lengthCm;
+      const maxDimension = Math.max(heightCm, widthCm, lengthCm);
+      isHeavy = maxDimension > 100 || sumDimensions > 200 || calculatedWeight >= 30;
+
+      // Get shipping coparticipation
       const shippingData = getShippingCoparticipation(calculatedWeight);
       const baseShipping = shippingData.value;
       shippingWeightRange = shippingData.range;
-      
+
       // Apply dispatch level discount
       const levelData = dispatchLevels.find(l => l.value === dispatchLevel);
       const discount = levelData?.discount || 0;
       shippingCoparticipation = baseShipping * (1 - discount / 100);
+      shippingCalculated = true;
+    } else if (heightCm > 0 || widthCm > 0 || lengthCm > 0 || weightKg > 0) {
+      // Partial dimensions provided, calculate what we can for display
+      if (heightCm > 0 && widthCm > 0 && lengthCm > 0 && weightKg > 0) {
+        const volume = heightCm * widthCm * lengthCm;
+        const cubicWeight = volume / 6000;
+        calculatedWeight = Math.max(cubicWeight, weightKg);
+        
+        const sumDimensions = heightCm + widthCm + lengthCm;
+        const maxDimension = Math.max(heightCm, widthCm, lengthCm);
+        isHeavy = maxDimension > 100 || sumDimensions > 200 || calculatedWeight >= 30;
+      }
     }
 
-    // Tax calculation
-    const tax = taxPercentage ? (priceValue * parseFloat(taxPercentage)) / 100 : 0;
+    // Total Magalu deductions
+    const totalDeductions = fixedFee + commission + shippingCoparticipation;
 
-    // Total deductions
-    const totalDeductions = fixedFee + commission + shippingCoparticipation + tax;
-    
     // Estimated receipt
     const estimatedReceipt = priceValue - totalDeductions;
 
-    // Profit calculation
-    const costs = (parseFloat(productCost) || 0) + (parseFloat(operationalCost) || 0);
-    const profitMargin = estimatedReceipt - costs;
+    // Tax calculation (on product price, not on receipt)
+    const taxValue = taxPercentage ? (priceValue * parseNumber(taxPercentage)) / 100 : 0;
+
+    // Contribution margin: receipt - tax - product cost
+    const costProduct = parseNumber(productCost);
+    const contributionMargin = estimatedReceipt - taxValue - costProduct;
+    const contributionMarginPercentage = priceValue > 0 ? (contributionMargin / priceValue) * 100 : 0;
+
+    // Profit margin: contribution margin - operational cost
+    const costOperational = parseNumber(operationalCost);
+    const profitMargin = contributionMargin - costOperational;
     const profitPercentage = priceValue > 0 ? (profitMargin / priceValue) * 100 : 0;
 
     const calculationResult: CalculationResult = {
@@ -212,10 +345,13 @@ export function PricingCalculator() {
       commissionRate,
       commission,
       shippingCoparticipation,
+      shippingCoparticipationCalculated: shippingCalculated,
       shippingWeightRange,
-      tax,
+      tax: taxValue,
       totalDeductions,
       estimatedReceipt,
+      contributionMargin,
+      contributionMarginPercentage,
       profitMargin,
       profitPercentage,
     };
@@ -228,22 +364,26 @@ export function PricingCalculator() {
     
     setLoading(true);
     try {
-      // Convert dimensions to cm for storage
-      const heightCm = dimensionUnit === 'm' ? parseFloat(height) * 100 : parseFloat(height) || 0;
-      const widthCm = dimensionUnit === 'm' ? parseFloat(width) * 100 : parseFloat(width) || 0;
-      const lengthCm = dimensionUnit === 'm' ? parseFloat(length) * 100 : parseFloat(length) || 0;
-      const weightKg = weightUnit === 'g' ? parseFloat(weight) / 1000 : parseFloat(weight) || 0;
+      const heightCm = dimensionUnit === 'm' ? parseNumber(height) * 100 : parseNumber(height);
+      const widthCm = dimensionUnit === 'm' ? parseNumber(width) * 100 : parseNumber(width);
+      const lengthCm = dimensionUnit === 'm' ? parseNumber(length) * 100 : parseNumber(length);
+      const weightKg = weightUnit === 'g' ? parseNumber(weight) / 1000 : parseNumber(weight);
+
+      const selectedCommission = commissionOptions.find(opt => opt.value === commissionType);
 
       const { error } = await supabase.from('pricing_history').insert({
         user_id: user.id,
         product_name: productName || null,
-        product_price: parseFloat(price),
-        product_category: category,
-        financial_modality: financialModality,
+        product_price: parseNumber(price),
+        commission_type: selectedCommission?.label || '',
+        commission_rate: result.commissionRate,
+        is_custom_commission: commissionType === 'custom',
+        product_category: selectedCommission?.category || '',
+        financial_modality: selectedCommission?.modality || '',
         dispatch_level: dispatchLevel,
-        tax_percentage: taxPercentage ? parseFloat(taxPercentage) : 0,
-        product_cost: productCost ? parseFloat(productCost) : 0,
-        operational_cost: operationalCost ? parseFloat(operationalCost) : 0,
+        tax_percentage: taxPercentage ? parseNumber(taxPercentage) : 0,
+        product_cost: productCost ? parseNumber(productCost) : 0,
+        operational_cost: operationalCost ? parseNumber(operationalCost) : 0,
         height_cm: heightCm || null,
         width_cm: widthCm || null,
         length_cm: lengthCm || null,
@@ -251,10 +391,14 @@ export function PricingCalculator() {
         calculated_weight: result.calculatedWeight,
         is_heavy: result.isHeavy,
         fixed_fee: result.fixedFee,
-        commission_rate: result.commissionRate,
         shipping_coparticipation: result.shippingCoparticipation,
+        shipping_coparticipation_calculated: result.shippingCoparticipationCalculated,
+        shipping_coparticipation_value: result.shippingCoparticipation,
         estimated_receipt: result.estimatedReceipt,
+        contribution_margin: result.contributionMargin,
+        contribution_margin_percentage: result.contributionMarginPercentage,
         profit_margin: result.profitMargin,
+        profit_margin_percentage: result.profitPercentage,
       });
 
       if (error) throw error;
@@ -272,6 +416,19 @@ export function PricingCalculator() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearForm = () => {
+    setProductName('');
+    setPrice('');
+    setTaxPercentage('');
+    setProductCost('');
+    setOperationalCost('');
+    setHeight('');
+    setWidth('');
+    setLength('');
+    setWeight('');
+    setResult(null);
   };
 
   return (
@@ -292,9 +449,8 @@ export function PricingCalculator() {
           <Label htmlFor="price">Preço do Produto (R$) *</Label>
           <Input
             id="price"
-            type="number"
-            step="0.01"
-            placeholder="100.00"
+            type="text"
+            placeholder="100,00"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             required
@@ -302,27 +458,17 @@ export function PricingCalculator() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="category">Categoria do Produto *</Label>
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger id="category">
-              <SelectValue placeholder="Selecione a categoria" />
+          <Label htmlFor="commissionType">Tipo de Comissão *</Label>
+          <Select value={commissionType} onValueChange={setCommissionType}>
+            <SelectTrigger id="commissionType">
+              <SelectValue placeholder="Selecione o tipo de comissão" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="moda">Moda e Acessórios</SelectItem>
-              <SelectItem value="demais">Demais Categorias</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="financialModality">Modalidade Financeira *</Label>
-          <Select value={financialModality} onValueChange={setFinancialModality}>
-            <SelectTrigger id="financialModality">
-              <SelectValue placeholder="Selecione a modalidade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="parcelado">No Fluxo (Parcelado)</SelectItem>
-              <SelectItem value="avista">Antecipação Automática (À Vista)</SelectItem>
+              {commissionOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -344,11 +490,10 @@ export function PricingCalculator() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="tax">Imposto (%)</Label>
+          <Label htmlFor="tax">Imposto (%) (opcional)</Label>
           <Input
             id="tax"
-            type="number"
-            step="0.01"
+            type="text"
             placeholder="0"
             value={taxPercentage}
             onChange={(e) => setTaxPercentage(e.target.value)}
@@ -356,24 +501,22 @@ export function PricingCalculator() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="productCost">Custo do Produto (R$)</Label>
+          <Label htmlFor="productCost">Custo do Produto (R$) (opcional)</Label>
           <Input
             id="productCost"
-            type="number"
-            step="0.01"
-            placeholder="0.00"
+            type="text"
+            placeholder="0,00"
             value={productCost}
             onChange={(e) => setProductCost(e.target.value)}
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="operationalCost">Custo Operacional (R$)</Label>
+          <Label htmlFor="operationalCost">Custo Operacional (R$) (opcional)</Label>
           <Input
             id="operationalCost"
-            type="number"
-            step="0.01"
-            placeholder="0.00"
+            type="text"
+            placeholder="0,00"
             value={operationalCost}
             onChange={(e) => setOperationalCost(e.target.value)}
           />
@@ -386,7 +529,7 @@ export function PricingCalculator() {
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Como o preço do produto é superior a R$ 79,00, preencha as dimensões e peso para calcular a coparticipação no frete corretamente.
+            Como o preço do produto é superior a R$ 79,00, preencha <strong>TODAS as dimensões (altura, largura e comprimento) e o peso</strong> para calcular a coparticipação no frete corretamente.
           </AlertDescription>
         </Alert>
       )}
@@ -394,75 +537,90 @@ export function PricingCalculator() {
       {/* Dimensions */}
       <div>
         <h3 className="text-lg font-semibold mb-4">Dimensões do Produto</h3>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="height">Altura</Label>
-            <div className="flex gap-2">
+            <Label htmlFor="dimensionUnit" className="flex items-center gap-2">
+              Unidade de Medida
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Esta unidade se aplica a todos os campos de dimensão (altura, largura e comprimento)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </Label>
+            <Select value={dimensionUnit} onValueChange={setDimensionUnit}>
+              <SelectTrigger id="dimensionUnit" className="w-full md:w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cm">Centímetros (cm)</SelectItem>
+                <SelectItem value="m">Metros (m)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="height">Altura</Label>
               <Input
                 id="height"
-                type="number"
-                step="0.01"
+                type="text"
                 placeholder="0"
                 value={height}
                 onChange={(e) => setHeight(e.target.value)}
               />
-              <Select value={dimensionUnit} onValueChange={setDimensionUnit}>
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cm">cm</SelectItem>
-                  <SelectItem value="m">m</SelectItem>
-                </SelectContent>
-              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="width">Largura</Label>
+              <Input
+                id="width"
+                type="text"
+                placeholder="0"
+                value={width}
+                onChange={(e) => setWidth(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="length">Comprimento</Label>
+              <Input
+                id="length"
+                type="text"
+                placeholder="0"
+                value={length}
+                onChange={(e) => setLength(e.target.value)}
+              />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="width">Largura</Label>
-            <Input
-              id="width"
-              type="number"
-              step="0.01"
-              placeholder="0"
-              value={width}
-              onChange={(e) => setWidth(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="length">Comprimento</Label>
-            <Input
-              id="length"
-              type="number"
-              step="0.01"
-              placeholder="0"
-              value={length}
-              onChange={(e) => setLength(e.target.value)}
-            />
+            <Label htmlFor="weightUnit">Unidade de Peso</Label>
+            <Select value={weightUnit} onValueChange={setWeightUnit}>
+              <SelectTrigger id="weightUnit" className="w-full md:w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="kg">Quilogramas (kg)</SelectItem>
+                <SelectItem value="g">Gramas (g)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="weight">Peso</Label>
-            <div className="flex gap-2">
-              <Input
-                id="weight"
-                type="number"
-                step="0.001"
-                placeholder="0"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-              />
-              <Select value={weightUnit} onValueChange={setWeightUnit}>
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="kg">kg</SelectItem>
-                  <SelectItem value="g">g</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Input
+              id="weight"
+              type="text"
+              placeholder="0"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              className="w-full md:w-64"
+            />
           </div>
         </div>
       </div>
@@ -472,6 +630,10 @@ export function PricingCalculator() {
           <Calculator className="mr-2 h-4 w-4" />
           Calcular
         </Button>
+        <Button onClick={clearForm} variant="outline">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Limpar
+        </Button>
       </div>
 
       {/* Results */}
@@ -479,7 +641,7 @@ export function PricingCalculator() {
         <Card className="bg-gradient-subtle border-primary/20">
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold">Resultado do Cálculo</h3>
+              <h3 className="text-xl font-bold">Análise Financeira Completa</h3>
               <Button variant="outline" size="sm" onClick={saveToHistory} disabled={loading}>
                 <Save className="mr-2 h-4 w-4" />
                 Salvar
@@ -488,66 +650,168 @@ export function PricingCalculator() {
             
             <Separator />
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Tipo de Produto</p>
-                <p className="text-lg font-semibold">
-                  {result.isHeavy ? 'Pesado' : 'Leve'}
-                </p>
-              </div>
+            <div>
+              <h4 className="font-semibold mb-3">Detalhes do Cálculo</h4>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Tipo de Produto</p>
+                  <p className="text-lg font-semibold">
+                    {result.isHeavy ? 'Pesado' : 'Leve'}
+                  </p>
+                </div>
 
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Peso Considerado</p>
-                <p className="text-lg font-semibold">{result.calculatedWeight.toFixed(3)} kg</p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Taxa Fixa</p>
-                <p className="text-lg font-semibold">R$ {result.fixedFee.toFixed(2)}</p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Comissão ({result.commissionRate}% - {category === 'moda' ? 'Moda' : 'Demais'}/{financialModality === 'parcelado' ? 'Parcelado' : 'À Vista'})
-                </p>
-                <p className="text-lg font-semibold">R$ {result.commission.toFixed(2)}</p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Coparticipação Frete ({result.shippingWeightRange})
-                </p>
-                <p className="text-lg font-semibold">R$ {result.shippingCoparticipation.toFixed(2)}</p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Impostos</p>
-                <p className="text-lg font-semibold">R$ {result.tax.toFixed(2)}</p>
+                {result.calculatedWeight > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-muted-foreground">Peso Considerado</p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Maior valor entre cubagem (volume÷6000) e peso real</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="text-lg font-semibold">{formatDecimal(result.calculatedWeight, 3)} kg</p>
+                  </div>
+                )}
               </div>
             </div>
 
             <Separator />
 
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-primary/10">
-                <span className="text-lg font-semibold">Previsão de Recebimento</span>
-                <span className="text-2xl font-bold text-primary">
-                  R$ {result.estimatedReceipt.toFixed(2)}
-                </span>
-              </div>
+            <div>
+              <h4 className="font-semibold mb-3">Deduções do Magalu</h4>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Taxa Fixa</p>
+                  <p className="text-lg font-semibold">{formatCurrency(result.fixedFee)}</p>
+                </div>
 
-              <div className="flex items-center justify-between p-4 rounded-lg bg-success/10">
-                <span className="text-lg font-semibold">Margem de Lucro</span>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-success">
-                    R$ {result.profitMargin.toFixed(2)}
-                  </p>
+                <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    {result.profitPercentage.toFixed(2)}% do preço
+                    Comissão ({formatPercentage(result.commissionRate)})
                   </p>
+                  <p className="text-lg font-semibold">{formatCurrency(result.commission)}</p>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <p className="text-sm text-muted-foreground">Coparticipação Frete</p>
+                  {result.shippingCoparticipationCalculated ? (
+                    <>
+                      <p className="text-lg font-semibold">{formatCurrency(result.shippingCoparticipation)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Faixa: {result.shippingWeightRange}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">
+                      {parseNumber(price) <= 79 
+                        ? 'ℹ️ Coparticipação não aplicável (produto abaixo de R$ 79,00)' 
+                        : '⚠️ Informe peso e TODAS as dimensões (altura, largura e comprimento) para calcular a coparticipação no frete'}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between p-4 rounded-lg bg-primary/10">
+              <span className="text-lg font-semibold">Previsão de Recebimento</span>
+              <span className="text-2xl font-bold text-primary">
+                {formatCurrency(result.estimatedReceipt)}
+              </span>
+            </div>
+
+            <Separator />
+
+            <div>
+              <h4 className="font-semibold mb-3">Custos Variáveis (para Margem de Contribuição)</h4>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Imposto ({taxPercentage ? formatPercentage(parseNumber(taxPercentage)) : '0%'})
+                  </p>
+                  <p className="text-lg font-semibold">{formatCurrency(result.tax)}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Custo do Produto (CMV)</p>
+                  <p className="text-lg font-semibold">{formatCurrency(parseNumber(productCost))}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 rounded-lg bg-success/10">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold">Margem de Contribuição</span>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Quanto sobra após custos variáveis (deduções + impostos + CMV)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-success">
+                  {formatCurrency(result.contributionMargin)}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {formatPercentage(result.contributionMarginPercentage)} do preço
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <h4 className="font-semibold mb-3">Custos Fixos</h4>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Custo Operacional</p>
+                <p className="text-lg font-semibold">{formatCurrency(parseNumber(operationalCost))}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 rounded-lg bg-primary/10">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold">Margem de Lucro Líquida</span>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Lucro final após todos os custos (variáveis + fixos)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-primary">
+                  {formatCurrency(result.profitMargin)}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {formatPercentage(result.profitPercentage)} do preço
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <Link to="/ajuda/magalu-taxas">
+              <Button variant="link" className="p-0 h-auto">
+                <BookOpen className="mr-2 h-4 w-4" />
+                Entenda as Taxas
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       )}

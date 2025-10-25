@@ -14,10 +14,82 @@ export type Database = {
   }
   public: {
     Tables: {
+      global_settings: {
+        Row: {
+          commission_demais_antecipado: number
+          commission_demais_parcelado: number
+          commission_moda_antecipado: number
+          commission_moda_parcelado: number
+          fixed_fee: number
+          id: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          commission_demais_antecipado?: number
+          commission_demais_parcelado?: number
+          commission_moda_antecipado?: number
+          commission_moda_parcelado?: number
+          fixed_fee?: number
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          commission_demais_antecipado?: number
+          commission_demais_parcelado?: number
+          commission_moda_antecipado?: number
+          commission_moda_parcelado?: number
+          fixed_fee?: number
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      help_pages: {
+        Row: {
+          active: boolean | null
+          content: string
+          created_at: string | null
+          id: string
+          platform: string
+          slug: string
+          title: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          content: string
+          created_at?: string | null
+          id?: string
+          platform: string
+          slug: string
+          title: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          content?: string
+          created_at?: string | null
+          id?: string
+          platform?: string
+          slug?: string
+          title?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       pricing_history: {
         Row: {
           calculated_weight: number | null
           commission_rate: number | null
+          commission_type: string | null
+          contribution_margin: number | null
+          contribution_margin_percentage: number | null
           created_at: string | null
           dispatch_level: string
           estimated_receipt: number | null
@@ -25,6 +97,7 @@ export type Database = {
           fixed_fee: number | null
           height_cm: number | null
           id: string
+          is_custom_commission: boolean | null
           is_heavy: boolean | null
           length_cm: number | null
           operational_cost: number | null
@@ -33,7 +106,10 @@ export type Database = {
           product_name: string | null
           product_price: number
           profit_margin: number | null
+          profit_margin_percentage: number | null
           shipping_coparticipation: number | null
+          shipping_coparticipation_calculated: boolean | null
+          shipping_coparticipation_value: number | null
           tax_percentage: number | null
           user_id: string
           weight_kg: number | null
@@ -42,6 +118,9 @@ export type Database = {
         Insert: {
           calculated_weight?: number | null
           commission_rate?: number | null
+          commission_type?: string | null
+          contribution_margin?: number | null
+          contribution_margin_percentage?: number | null
           created_at?: string | null
           dispatch_level: string
           estimated_receipt?: number | null
@@ -49,6 +128,7 @@ export type Database = {
           fixed_fee?: number | null
           height_cm?: number | null
           id?: string
+          is_custom_commission?: boolean | null
           is_heavy?: boolean | null
           length_cm?: number | null
           operational_cost?: number | null
@@ -57,7 +137,10 @@ export type Database = {
           product_name?: string | null
           product_price: number
           profit_margin?: number | null
+          profit_margin_percentage?: number | null
           shipping_coparticipation?: number | null
+          shipping_coparticipation_calculated?: boolean | null
+          shipping_coparticipation_value?: number | null
           tax_percentage?: number | null
           user_id: string
           weight_kg?: number | null
@@ -66,6 +149,9 @@ export type Database = {
         Update: {
           calculated_weight?: number | null
           commission_rate?: number | null
+          commission_type?: string | null
+          contribution_margin?: number | null
+          contribution_margin_percentage?: number | null
           created_at?: string | null
           dispatch_level?: string
           estimated_receipt?: number | null
@@ -73,6 +159,7 @@ export type Database = {
           fixed_fee?: number | null
           height_cm?: number | null
           id?: string
+          is_custom_commission?: boolean | null
           is_heavy?: boolean | null
           length_cm?: number | null
           operational_cost?: number | null
@@ -81,7 +168,10 @@ export type Database = {
           product_name?: string | null
           product_price?: number
           profit_margin?: number | null
+          profit_margin_percentage?: number | null
           shipping_coparticipation?: number | null
+          shipping_coparticipation_calculated?: boolean | null
+          shipping_coparticipation_value?: number | null
           tax_percentage?: number | null
           user_id?: string
           weight_kg?: number | null
@@ -155,6 +245,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_custom_settings: {
+        Row: {
+          custom_commission_enabled: boolean | null
+          custom_commission_rate: number | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          custom_commission_enabled?: boolean | null
+          custom_commission_rate?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          custom_commission_enabled?: boolean | null
+          custom_commission_rate?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       user_settings: {
         Row: {
